@@ -28,13 +28,14 @@ function getRow($app, $id) {
     return $result;
 }
 
-// SLIM APP
+// SLIM APP INIT
 
 $app = AppFactory::create();
 $app->addBodyParsingMiddleware();
 $app->addRoutingMiddleware();
 
 if (!$localhost) {
+    // must be set if the app runs in a subdirectory on the web server
     $app->setBasePath('/seiko');
 }
 
@@ -49,6 +50,20 @@ $dbInit = function ($request, $handler) use($app, $localhost) {
     return $handler->handle($request);
 };
 $app->add($dbInit);
+
+// API_KEY
+
+$checkApiKey = function ($request, $handler) use($app) {
+    $api_keys = array('K1', 'K2');
+    $queryParams = $request->getQueryParams();
+    if (isset($queryParams['api_key']) && in_array($queryParams['api_key'], $api_keys)) {
+        return $handler->handle($request);
+    }
+    else {
+        throw new Exception('Missing or wrong api key', 401);
+    }
+};
+$app->add($checkApiKey);
 
 // ERROR
 
@@ -69,13 +84,8 @@ $errorMiddleware->setDefaultErrorHandler($customErrorHandler);
 
 // TEST ROUTES
 
-$app->get('/', function (Request $request, Response $response, $args) {
-    $response->getBody()->write("Hello Seiko api!");
-    return $response;
-});
-
 $app->get('/test', function (Request $request, Response $response, $args) {
-    $result = ['message' => 'Test'];
+    $result = ['message' => 'Hello Seiko api!'];
     return toJSON($response, $result);
 });
 
@@ -90,27 +100,48 @@ $app->get('/test/error', function (Request $request, Response $response, $args) 
 
 // SEIKO
 
+$app->get('/status', function (Request $request, Response $response) use ($app) {
+    $sth = $app->dbh->prepare("SELECT * FROM `seiko_szerviz`");
+    $sth->execute();
+    $result = $sth->fetchAll(PDO::FETCH_ASSOC);
+    return toJSON($response, $result);
+});
+
+$app->get('/status/exchange', function (Request $request, Response $response, $args) use ($app) {
+    $customFieldName = 'service_number';
+    $queryParamKey = "custom_field_$customFieldName";
+
+    $queryParams = $request->getQueryParams();
+    if (isset($queryParams[$queryParamKey])) {
+        $result = getRow($app, $queryParams[$queryParamKey]);
+        if (count ($result) == 1) {
+            return toJSON($response, [ $customFieldName => $result[0]['service_status'] ]);
+        } else {
+            throw new Exception('Status not found', 400);
+        }
+    }
+    else {
+        throw new Exception("Missing query parameter: $queryParamKey", 400);
+    }
+});
+
 $app->get('/status/{id}', function (Request $request, Response $response, $args) use ($app) {
     $result = getRow($app, $args['id']);
     if (count ($result) == 1) {
         return toJSON($response, $result);
     } else {
-        throw new Exception('Status not found', 400);
+        throw new Exception('Record not found', 404);
     }
-
-    return $response;
 });
 
 $app->post('/status/{id}', function (Request $request, Response $response, $args) use ($app) {
     $body = $request->getParsedBody();
     if (!isset( $body['status']) ){
-        throw new Exception('Status is missing body', 400);
+        throw new Exception('Status is missing in body', 400);
     }
 
-    $sth = $app->dbh->prepare("SELECT * FROM `seiko_szerviz` WHERE service_number = :id");
-    $sth->bindParam(':id', $args['id'], PDO::PARAM_STR);
-    $sth->execute();
-    $result = $sth->fetchAll(PDO::FETCH_ASSOC);
+    // check for an existing record
+    $result = getRow($app, $args['id']);
 
     if (count ($result) == 1) {
         $sth = $app->dbh->prepare("UPDATE `seiko_szerviz` SET service_status = :st WHERE service_number = :id");
@@ -119,17 +150,14 @@ $app->post('/status/{id}', function (Request $request, Response $response, $args
         $sth = $app->dbh->prepare("INSERT INTO `seiko_szerviz` (service_number, service_status) VALUES (:id, :st) ");
         $action = 'insert';
     }
-
     $sth->bindParam(':id', $args['id'], PDO::PARAM_STR);
     $sth->bindParam(':st',  $body['status'], PDO::PARAM_STR);
     $sth->execute();
     $result = [
-        'data' => getRow($app, $args['id']),
+        'data' => getRow($app, $args['id']), // returning the updated record
         'action' => $action
     ];
     return toJSON($response, $result);
-
-    return $response;
 });
 
 $app->run();
