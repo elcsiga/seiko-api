@@ -128,7 +128,7 @@ $app->get('/status/exchange', function (Request $request, Response $response, $a
 $app->get('/status/{id}', function (Request $request, Response $response, $args) use ($app) {
     $result = getRow($app, $args['id']);
     if (count ($result) == 1) {
-        return toJSON($response, $result);
+        return toJSON($response, $result[0]);
     } else {
         throw new Exception('Record not found', 404);
     }
