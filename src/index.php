@@ -109,13 +109,15 @@ $app->get('/status', function (Request $request, Response $response) use ($app) 
 
 $app->get('/status/exchange', function (Request $request, Response $response, $args) use ($app) {
     $customFieldName = 'service_number';
+    $responseFieldName = 'service_status';
+
     $queryParamKey = "custom_field_$customFieldName";
 
     $queryParams = $request->getQueryParams();
     if (isset($queryParams[$queryParamKey])) {
         $result = getRow($app, $queryParams[$queryParamKey]);
         if (count ($result) == 1) {
-            return toJSON($response, [ $customFieldName => $result[0]['service_status'] ]);
+            return toJSON($response, [ $responseFieldName => $result[0]['service_status'] ]);
         } else {
             throw new Exception('Status not found', 400);
         }
