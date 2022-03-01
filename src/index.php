@@ -28,6 +28,12 @@ function getRow($app, $id) {
     return $result;
 }
 
+function checkClient($app, $client) {
+    if ($app->client !== $client) {
+        throw new Exception('Access denied', 403);
+    }
+}
+
 // SLIM APP INIT
 
 $app = AppFactory::create();
@@ -54,9 +60,14 @@ $app->add($dbInit);
 // API_KEY
 
 $checkApiKey = function ($request, $handler) use($app) {
-    $api_keys = array('K1', 'K2');
+    $api_keys = [
+        '15427a4577a60e811db3a362eefd2c0b' => 'exchange',
+        'ab2469cd5cb8ad4591cae4b9e1a72d8f' => 'win-client'
+    ];
+
     $queryParams = $request->getQueryParams();
-    if (isset($queryParams['api_key']) && in_array($queryParams['api_key'], $api_keys)) {
+    if (isset($queryParams['api_key']) && isset($api_keys[$queryParams['api_key']])) {
+        $app->client = $api_keys[$queryParams['api_key']];
         return $handler->handle($request);
     }
     else {
@@ -101,6 +112,8 @@ $app->get('/test/error', function (Request $request, Response $response, $args) 
 // SEIKO
 
 $app->get('/status', function (Request $request, Response $response) use ($app) {
+    checkClient($app, 'win-client');
+
     $sth = $app->dbh->prepare("SELECT * FROM `seiko_szerviz`");
     $sth->execute();
     $result = $sth->fetchAll(PDO::FETCH_ASSOC);
@@ -108,6 +121,8 @@ $app->get('/status', function (Request $request, Response $response) use ($app) 
 });
 
 $app->get('/status/exchange', function (Request $request, Response $response, $args) use ($app) {
+    checkClient($app, 'exchange');
+
     $customFieldName = 'service_number';
     $responseFieldName = 'service_status';
 
@@ -128,6 +143,8 @@ $app->get('/status/exchange', function (Request $request, Response $response, $a
 });
 
 $app->get('/status/{id}', function (Request $request, Response $response, $args) use ($app) {
+    checkClient($app, 'win-client');
+
     $result = getRow($app, $args['id']);
     if (count ($result) == 1) {
         return toJSON($response, $result[0]);
@@ -137,6 +154,8 @@ $app->get('/status/{id}', function (Request $request, Response $response, $args)
 });
 
 $app->post('/status/{id}', function (Request $request, Response $response, $args) use ($app) {
+    checkClient($app, 'win-client');
+
     $body = $request->getParsedBody();
     if (!isset( $body['status']) ){
         throw new Exception('Status is missing in body', 400);
