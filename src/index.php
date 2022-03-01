@@ -14,7 +14,7 @@ require __DIR__ . '/../vendor/autoload.php';
 // HELPERS
 
 function toJSON($response, $result, $code = 200) {
-    $response->getBody()->write(json_encode($result));
+    $response->getBody()->write(json_encode($result, JSON_UNESCAPED_UNICODE));
     return $response
         ->withHeader('Content-Type', 'application/json')
         ->withStatus($code);
